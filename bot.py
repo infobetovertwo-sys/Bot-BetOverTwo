@@ -126,8 +126,15 @@ async def novo_conteudo(message: Message, state: FSMContext):
 
 @dp.message(NovoPrognostico.preco)
 async def novo_preco(message: Message, state: FSMContext):
-    texto = message.text.strip()
-    preco = 2.00 if texto == "" else float(texto.replace(",", "."))
+    texto = message.text.strip().replace("€", "").replace(",", ".").strip()
+    if texto == "":
+        preco = 2.00
+    else:
+        try:
+            preco = float(texto)
+        except ValueError:
+            await message.answer("Não percebi esse valor. Escreve só o número, ex: 2 ou 2.50 (sem símbolo de euro).")
+            return
     dados = await state.get_data()
     await state.clear()
 
