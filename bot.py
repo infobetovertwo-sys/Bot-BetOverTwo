@@ -1,0 +1,306 @@
+"""
+Bot de prognósticos com desbloqueio pago via MB Way (confirmação manual).
+
+Comandos de admin (só funcionam para TELEGRAM_ADMIN_ID):
+  /novo -> inicia o fluxo de criação de um prognóstico (conversa passo a passo)
+  /resultado <id> green|red|anulado -> marca o resultado
+  /stats -> mostra taxa de acerto e ROI atuais
+
+Fluxo do utilizador comum:
+  1. Vê o prognóstico bloqueado no grupo (odd da Betano visível, resto escondido)
+  2. Clica em "🔓 Desbloquear por 2€"
+  3. Bot manda-lhe o número de MB Way + uma referência única, em privado
+  4. O utilizador paga por fora (app do banco/MB Way)
+  5. O admin recebe uma notificação com botões para confirmar o pagamento na Revolut
+  6. Assim que o admin confirma, o bot envia automaticamente o conteúdo completo
+"""
+
+import asyncio
+import logging
+import os
+
+from aiogram import Bot, Dispatcher, F
+from aiogram.filters import Command
+from aiogram.types import (
+    Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,
+)
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
+
+import db
+
+logging.basicConfig(level=logging.INFO)
+
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+ADMIN_ID = int(os.getenv("TELEGRAM_ADMIN_ID", "0"))
+GRUPO_ID = int(os.getenv("TELEGRAM_GRUPO_ID", "0"))
+MBWAY_NUMERO = os.getenv("MBWAY_NUMERO", "9XX XXX XXX")
+
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher(storage=MemoryStorage())
+
+
+# ---------- Criação de prognóstico (fluxo de admin) ----------
+
+class NovoPrognostico(StatesGroup):
+    liga = State()
+    equipas = State()
+    mercado = State()
+    odd = State()
+    conteudo = State()
+    preco = State()
+
+
+@dp.message(Command("novo"))
+async def novo_prognostico_inicio(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    await state.set_state(NovoPrognostico.liga)
+    await message.answer("Qual a liga? (ex: La Liga)")
+
+
+@dp.message(NovoPrognostico.liga)
+async def novo_liga(message: Message, state: FSMContext):
+    await state.update_data(liga=message.text)
+    await state.set_state(NovoPrognostico.equipas)
+    await message.answer("Equipas? (formato: Casa - Fora)")
+
+
+@dp.message(NovoPrognostico.equipas)
+async def novo_equipas(message: Message, state: FSMContext):
+    partes = message.text.split(" - ")
+    await state.update_data(
+        equipa_casa=partes[0].strip(),
+        equipa_fora=partes[1].strip() if len(partes) > 1 else "",
+    )
+    await state.set_state(NovoPrognostico.mercado)
+    await message.answer("Mercado? (ex: Over 2.5 golos)")
+
+
+@dp.message(NovoPrognostico.mercado)
+async def novo_mercado(message: Message, state: FSMContext):
+    await state.update_data(mercado=message.text)
+    await state.set_state(NovoPrognostico.odd)
+    await message.answer("Odd na Betano? (ex: 1.85)")
+
+
+@dp.message(NovoPrognostico.odd)
+async def novo_odd(message: Message, state: FSMContext):
+    try:
+        odd = float(message.text.replace(",", "."))
+    except ValueError:
+        await message.answer("Odd inválida, tenta outra vez (ex: 1.85)")
+        return
+    await state.update_data(odd_betano=odd)
+    await state.set_state(NovoPrognostico.conteudo)
+    await message.answer("Conteúdo completo a enviar após pagamento (texto livre):")
+
+
+@dp.message(NovoPrognostico.conteudo)
+async def novo_conteudo(message: Message, state: FSMContext):
+    await state.update_data(conteudo_completo=message.text)
+    await state.set_state(NovoPrognostico.preco)
+    await message.answer("Preço de desbloqueio em € (Enter para usar 2.00):")
+
+
+@dp.message(NovoPrognostico.preco)
+async def novo_preco(message: Message, state: FSMContext):
+    texto = message.text.strip()
+    preco = 2.00 if texto == "" else float(texto.replace(",", "."))
+    dados = await state.get_data()
+    await state.clear()
+
+    from datetime import date
+    prog_id = db.criar_prognostico(
+        data_jogo=date.today().isoformat(),
+        liga=dados["liga"],
+        equipa_casa=dados["equipa_casa"],
+        equipa_fora=dados["equipa_fora"],
+        mercado=dados["mercado"],
+        odd_betano=dados["odd_betano"],
+        conteudo_completo=dados["conteudo_completo"],
+        preco_desbloqueio=preco,
+    )
+
+    texto_grupo = (
+        f"🔒 <b>Prognóstico de hoje</b>\n"
+        f"🏆 {dados['liga']}\n"
+        f"📊 Odd (Betano): <b>{dados['odd_betano']}</b>\n\n"
+        f"Desbloqueia por {preco:.2f}€ para veres a análise completa 👇"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text=f"🔓 Desbloquear por {preco:.2f}€",
+            callback_data=f"desbloquear:{prog_id}",
+        )
+    ]])
+    sent = await bot.send_message(GRUPO_ID, texto_grupo, reply_markup=kb, parse_mode="HTML")
+
+    with db.get_conn() as conn:
+        conn.execute(
+            "UPDATE prognosticos SET mensagem_id_grupo = ?, publicado_em = CURRENT_TIMESTAMP WHERE id = ?",
+            (sent.message_id, prog_id),
+        )
+
+    await message.answer(f"✅ Prognóstico #{prog_id} publicado no grupo.")
+
+
+# ---------- Botão de desbloqueio ----------
+
+@dp.callback_query(F.data.startswith("desbloquear:"))
+async def callback_desbloquear(callback: CallbackQuery):
+    prognostico_id = int(callback.data.split(":")[1])
+    prog = db.get_prognostico(prognostico_id)
+    if not prog:
+        await callback.answer("Prognóstico não encontrado.", show_alert=True)
+        return
+
+    utilizador_id = db.get_or_create_utilizador(
+        callback.from_user.id, callback.from_user.username, callback.from_user.full_name
+    )
+
+    # Já pagou antes? reenvia o conteúdo sem pedir pagamento outra vez
+    with db.get_conn() as conn:
+        ja_pago = conn.execute(
+            """SELECT 1 FROM desbloqueios
+               WHERE utilizador_id = ? AND prognostico_id = ? AND estado = 'pago'""",
+            (utilizador_id, prognostico_id),
+        ).fetchone()
+    if ja_pago:
+        await bot.send_message(callback.from_user.id, prog["conteudo_completo"])
+        await callback.answer("Já tinhas desbloqueado — reenviado em privado.")
+        return
+
+    # Referência curta e única para identificares o pagamento na Revolut
+    referencia = f"PG{prognostico_id}U{callback.from_user.id % 10000}"
+
+    try:
+        desbloqueio_id = db.criar_desbloqueio(
+            utilizador_id, prognostico_id, referencia, prog["preco_desbloqueio"]
+        )
+    except Exception:
+        # já existe um pedido pendente para este utilizador+prognóstico
+        await callback.answer("Já tens um pedido de desbloqueio pendente para este prognóstico.", show_alert=True)
+        return
+
+    try:
+        await bot.send_message(
+            callback.from_user.id,
+            f"Para desbloquear o prognóstico #{prognostico_id}, envia "
+            f"<b>{prog['preco_desbloqueio']:.2f}€</b> via MB Way para:\n\n"
+            f"📱 <b>{MBWAY_NUMERO}</b>\n\n"
+            f"Na descrição/nota do MB Way, coloca esta referência:\n"
+            f"<code>{referencia}</code>\n\n"
+            f"Assim que eu confirmar o pagamento, recebes a análise completa aqui automaticamente. "
+            f"Isto costuma demorar só alguns minutos.",
+            parse_mode="HTML",
+        )
+    except Exception:
+        await callback.answer(
+            "Preciso que me inicies uma conversa privada primeiro (clica em Start no bot).",
+            show_alert=True,
+        )
+        return
+
+    await callback.answer("Enviei-te as instruções de pagamento em privado 👍")
+
+    # Notifica o admin com botões para confirmar/rejeitar
+    kb_admin = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Confirmar pagamento", callback_data=f"confirmar:{desbloqueio_id}"),
+        InlineKeyboardButton(text="❌ Ainda não recebi", callback_data=f"rejeitar:{desbloqueio_id}"),
+    ]])
+    await bot.send_message(
+        ADMIN_ID,
+        f"💰 <b>Pedido de desbloqueio</b>\n"
+        f"Utilizador: {callback.from_user.full_name} (@{callback.from_user.username or 'sem username'})\n"
+        f"Prognóstico: #{prognostico_id} — {prog['liga']}\n"
+        f"Valor: {prog['preco_desbloqueio']:.2f}€\n"
+        f"Referência a procurar na Revolut: <code>{referencia}</code>",
+        reply_markup=kb_admin,
+        parse_mode="HTML",
+    )
+
+
+# ---------- Confirmação manual do admin ----------
+
+@dp.callback_query(F.data.startswith("confirmar:"))
+async def callback_confirmar(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("Só o admin pode confirmar pagamentos.", show_alert=True)
+        return
+
+    desbloqueio_id = int(callback.data.split(":")[1])
+    desbloqueio = db.get_desbloqueio(desbloqueio_id)
+    if not desbloqueio or desbloqueio["estado"] != "pendente":
+        await callback.answer("Este pedido já foi tratado.", show_alert=True)
+        return
+
+    db.marcar_pago(desbloqueio_id)
+    prog = db.get_prognostico(desbloqueio["prognostico_id"])
+    with db.get_conn() as conn:
+        utilizador = conn.execute(
+            "SELECT telegram_id FROM utilizadores WHERE id = ?",
+            (desbloqueio["utilizador_id"],),
+        ).fetchone()
+
+    await bot.send_message(
+        utilizador["telegram_id"],
+        f"✅ Pagamento confirmado!\n\n{prog['conteudo_completo']}",
+    )
+    await callback.message.edit_text(callback.message.text + "\n\n✅ CONFIRMADO")
+    await callback.answer("Confirmado! Conteúdo enviado ao utilizador.")
+
+
+@dp.callback_query(F.data.startswith("rejeitar:"))
+async def callback_rejeitar(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("Só o admin pode fazer isto.", show_alert=True)
+        return
+
+    desbloqueio_id = int(callback.data.split(":")[1])
+    db.marcar_rejeitado(desbloqueio_id)
+    await callback.message.edit_text(callback.message.text + "\n\n❌ REJEITADO (pagamento não confirmado)")
+    await callback.answer("Marcado como não pago.")
+
+
+# ---------- Stats e resultado (admin) ----------
+
+@dp.message(Command("stats"))
+async def cmd_stats(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    s = db.get_estatisticas()
+    await message.answer(
+        f"📊 <b>Estatísticas</b>\n"
+        f"Total: {s['total_prognosticos']}\n"
+        f"Greens: {s['total_greens']} | Reds: {s['total_reds']}\n"
+        f"Taxa de acerto: {s['taxa_acerto_pct']}%\n"
+        f"ROI: {s['roi_pct']}%",
+        parse_mode="HTML",
+    )
+
+
+@dp.message(Command("resultado"))
+async def cmd_resultado(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    partes = message.text.split()
+    if len(partes) != 3:
+        await message.answer("Uso: /resultado <id> green|red|anulado")
+        return
+    _, prog_id, resultado = partes
+    if resultado not in ("green", "red", "anulado"):
+        await message.answer("Resultado inválido.")
+        return
+    db.marcar_resultado(int(prog_id), resultado)
+    await message.answer(f"Prognóstico #{prog_id} marcado como {resultado}.")
+
+
+async def main():
+    db.init_db()
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
