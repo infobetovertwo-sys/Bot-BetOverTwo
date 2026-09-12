@@ -50,14 +50,25 @@ async def cmd_start(message: Message):
             "✅ Bot ativo!\n\n"
             "Comandos disponíveis:\n"
             "/novo — publicar um prognóstico novo\n"
+            "/pendentes — ver prognósticos ainda sem resultado marcado\n"
             "/stats — ver taxa de acerto e ROI\n"
             "/resultado <id> green|red|anulado — marcar resultado"
         )
     else:
         await message.answer(
-            "👋 Bem-vindo! Os prognósticos são publicados no canal. "
+            "👋 Bem-vindo ao BetOverTwo!\n\n"
+            "📋 <b>Como funciona:</b>\n"
+            "• Prognósticos de jogos de futebol de todas as ligas do mundo\n"
+            "• Jogos com muitos golos — odds a partir de 1.75\n"
+            "• Mercados: <b>Ambas Marcam + 2.5 Golos</b> ou <b>Ambas Marcam + 3.5 Golos</b>\n"
+            "• Cada prognóstico custa <b>2€</b>\n"
+            "• Publicados com <b>24h de antecedência</b> em relação ao jogo\n"
+            "• O prognóstico só é enviado em <b>mensagem privada</b>, e só depois "
+            "do pagamento confirmado\n\n"
+            "Os prognósticos são publicados no canal, bloqueados. "
             "Quando quiseres desbloquear um, clica no botão da mensagem — "
-            "vou enviar-te aqui as instruções de pagamento."
+            "envio-te aqui as instruções de pagamento.",
+            parse_mode="HTML",
         )
 
 
@@ -65,10 +76,9 @@ async def cmd_start(message: Message):
 
 class NovoPrognostico(StatesGroup):
     liga = State()
-    equipas = State()
-    mercado = State()
     odd = State()
-    conteudo = State()
+    data_hora = State()
+    foto = State()
     preco = State()
 
 
@@ -82,25 +92,7 @@ async def novo_prognostico_inicio(message: Message, state: FSMContext):
 
 @dp.message(NovoPrognostico.liga)
 async def novo_liga(message: Message, state: FSMContext):
-    await state.update_data(liga=message.text)
-    await state.set_state(NovoPrognostico.equipas)
-    await message.answer("Equipas? (formato: Casa - Fora)")
-
-
-@dp.message(NovoPrognostico.equipas)
-async def novo_equipas(message: Message, state: FSMContext):
-    partes = message.text.split(" - ")
-    await state.update_data(
-        equipa_casa=partes[0].strip(),
-        equipa_fora=partes[1].strip() if len(partes) > 1 else "",
-    )
-    await state.set_state(NovoPrognostico.mercado)
-    await message.answer("Mercado? (ex: Over 2.5 golos)")
-
-
-@dp.message(NovoPrognostico.mercado)
-async def novo_mercado(message: Message, state: FSMContext):
-    await state.update_data(mercado=message.text)
+    await state.update_data(liga=message.text.strip())
     await state.set_state(NovoPrognostico.odd)
     await message.answer("Odd na Betano? (ex: 1.85)")
 
@@ -113,27 +105,28 @@ async def novo_odd(message: Message, state: FSMContext):
         await message.answer("Odd inválida, tenta outra vez (ex: 1.85)")
         return
     await state.update_data(odd_betano=odd)
-    await state.set_state(NovoPrognostico.conteudo)
-    await message.answer(
-        "Conteúdo a enviar após pagamento — podes mandar um <b>texto</b> "
-        "ou uma <b>foto/imagem</b> (ex: o teu design com a análise):",
-        parse_mode="HTML",
-    )
+    await state.set_state(NovoPrognostico.data_hora)
+    await message.answer("Data e hora do jogo? (ex: 13/09 20:00)")
 
 
-@dp.message(NovoPrognostico.conteudo, F.photo)
-async def novo_conteudo_foto(message: Message, state: FSMContext):
+@dp.message(NovoPrognostico.data_hora)
+async def novo_data_hora(message: Message, state: FSMContext):
+    await state.update_data(data_hora_jogo=message.text.strip())
+    await state.set_state(NovoPrognostico.foto)
+    await message.answer("Agora envia a imagem do prognóstico 📸")
+
+
+@dp.message(NovoPrognostico.foto, F.photo)
+async def novo_foto(message: Message, state: FSMContext):
     file_id = message.photo[-1].file_id  # maior resolução disponível
-    await state.update_data(conteudo_completo=file_id, tipo_conteudo="foto")
+    await state.update_data(conteudo_completo=file_id)
     await state.set_state(NovoPrognostico.preco)
     await message.answer("Imagem recebida ✅\nPreço de desbloqueio em € (Enter para usar 2.00):")
 
 
-@dp.message(NovoPrognostico.conteudo)
-async def novo_conteudo_texto(message: Message, state: FSMContext):
-    await state.update_data(conteudo_completo=message.text, tipo_conteudo="texto")
-    await state.set_state(NovoPrognostico.preco)
-    await message.answer("Preço de desbloqueio em € (Enter para usar 2.00):")
+@dp.message(NovoPrognostico.foto)
+async def novo_foto_invalida(message: Message, state: FSMContext):
+    await message.answer("Preciso mesmo de uma imagem — usa o clip 📎 e envia uma foto.")
 
 
 @dp.message(NovoPrognostico.preco)
@@ -153,21 +146,28 @@ async def novo_preco(message: Message, state: FSMContext):
     from datetime import date
     prog_id = db.criar_prognostico(
         data_jogo=date.today().isoformat(),
-        liga=dados["liga"],
-        equipa_casa=dados["equipa_casa"],
-        equipa_fora=dados["equipa_fora"],
-        mercado=dados["mercado"],
+        liga=dados.get("liga", ""), equipa_casa="", equipa_fora="", mercado="",
         odd_betano=dados["odd_betano"],
         conteudo_completo=dados["conteudo_completo"],
-        tipo_conteudo=dados.get("tipo_conteudo", "texto"),
+        data_hora_jogo=dados.get("data_hora_jogo", ""),
+        tipo_conteudo="foto",
         preco_desbloqueio=preco,
     )
 
+    stats = db.get_estatisticas()
+    linha_stats = ""
+    if stats["total_prognosticos"] and stats["total_prognosticos"] > 0 and (stats["total_greens"] or stats["total_reds"]):
+        linha_stats = (
+            f"📈 Taxa de acerto: {stats['taxa_acerto_pct']}% | ROI: {stats['roi_pct']}%\n\n"
+        )
+
     texto_grupo = (
-        f"🔒 <b>Prognóstico de hoje</b>\n"
-        f"🏆 {dados['liga']}\n"
+        f"🔒 <b>Prognóstico</b>\n"
+        f"🏆 {dados.get('liga', '')}\n"
+        f"🕒 {dados.get('data_hora_jogo', '')}\n"
         f"📊 Odd (Betano): <b>{dados['odd_betano']}</b>\n\n"
-        f"Desbloqueia por {preco:.2f}€ para veres a análise completa 👇"
+        f"{linha_stats}"
+        f"Desbloqueia por {preco:.2f}€ 👇"
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
@@ -326,6 +326,23 @@ async def cmd_stats(message: Message):
         f"ROI: {s['roi_pct']}%",
         parse_mode="HTML",
     )
+
+
+@dp.message(Command("pendentes"))
+async def cmd_pendentes(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    pendentes = db.get_pendentes()
+    if not pendentes:
+        await message.answer("Não há prognósticos pendentes de resultado.")
+        return
+    linhas = ["📋 <b>Prognósticos por marcar:</b>\n"]
+    for p in pendentes:
+        linhas.append(
+            f"#{p['id']} — {p['liga'] or 'sem liga'} | Odd: {p['odd_betano']} | {p['data_hora_jogo'] or 'sem data'}"
+        )
+    linhas.append("\nUsa: /resultado <id> green|red|anulado")
+    await message.answer("\n".join(linhas), parse_mode="HTML")
 
 
 @dp.message(Command("resultado"))

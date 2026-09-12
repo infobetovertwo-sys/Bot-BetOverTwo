@@ -39,16 +39,16 @@ def get_or_create_utilizador(telegram_id: int, username: str, nome: str) -> int:
 
 
 def criar_prognostico(data_jogo, liga, equipa_casa, equipa_fora, mercado,
-                       odd_betano, conteudo_completo, tipo_conteudo="texto",
-                       preco_desbloqueio=2.00):
+                       odd_betano, conteudo_completo, data_hora_jogo="",
+                       tipo_conteudo="texto", preco_desbloqueio=2.00):
     with get_conn() as conn:
         cur = conn.execute(
             """INSERT INTO prognosticos
                (data_jogo, liga, equipa_casa, equipa_fora, mercado, odd_betano,
-                tipo_conteudo, conteudo_completo, preco_desbloqueio)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                data_hora_jogo, tipo_conteudo, conteudo_completo, preco_desbloqueio)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (data_jogo, liga, equipa_casa, equipa_fora, mercado, odd_betano,
-             tipo_conteudo, conteudo_completo, preco_desbloqueio),
+             data_hora_jogo, tipo_conteudo, conteudo_completo, preco_desbloqueio),
         )
         return cur.lastrowid
 
@@ -117,3 +117,12 @@ def marcar_resultado(prognostico_id: int, resultado: str):
 def get_estatisticas():
     with get_conn() as conn:
         return dict(conn.execute("SELECT * FROM vw_estatisticas").fetchone())
+
+
+def get_pendentes():
+    with get_conn() as conn:
+        return conn.execute(
+            """SELECT id, liga, odd_betano, data_hora_jogo, criado_em
+               FROM prognosticos WHERE resultado = 'pendente'
+               ORDER BY id DESC"""
+        ).fetchall()
