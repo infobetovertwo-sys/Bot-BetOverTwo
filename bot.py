@@ -77,7 +77,8 @@ async def cmd_start(message: Message):
 class NovoPrognostico(StatesGroup):
     liga = State()
     odd = State()
-    data_hora = State()
+    data = State()
+    mercado = State()
     foto = State()
     preco = State()
 
@@ -105,15 +106,29 @@ async def novo_odd(message: Message, state: FSMContext):
         await message.answer("Odd inválida, tenta outra vez (ex: 1.85)")
         return
     await state.update_data(odd_betano=odd)
-    await state.set_state(NovoPrognostico.data_hora)
-    await message.answer("Data e hora do jogo? (ex: 13/09 20:00)")
+    await state.set_state(NovoPrognostico.data)
+    await message.answer("Data do jogo? (ex: 13/09)")
 
 
-@dp.message(NovoPrognostico.data_hora)
-async def novo_data_hora(message: Message, state: FSMContext):
+@dp.message(NovoPrognostico.data)
+async def novo_data(message: Message, state: FSMContext):
     await state.update_data(data_hora_jogo=message.text.strip())
+    await state.set_state(NovoPrognostico.mercado)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Ambas Marcam + 2.5 Golos", callback_data="mercado:AM+2.5")],
+        [InlineKeyboardButton(text="Ambas Marcam + 3.5 Golos", callback_data="mercado:AM+3.5")],
+    ])
+    await message.answer("Qual o mercado?", reply_markup=kb)
+
+
+@dp.callback_query(NovoPrognostico.mercado, F.data.startswith("mercado:"))
+async def novo_mercado_callback(callback: CallbackQuery, state: FSMContext):
+    mercado = callback.data.split(":", 1)[1]
+    await state.update_data(mercado=mercado)
     await state.set_state(NovoPrognostico.foto)
-    await message.answer("Agora envia a imagem do prognóstico 📸")
+    await callback.message.edit_text(f"Mercado escolhido: {mercado} ✅")
+    await callback.message.answer("Agora envia a imagem do prognóstico 📸")
+    await callback.answer()
 
 
 @dp.message(NovoPrognostico.foto, F.photo)
@@ -146,7 +161,8 @@ async def novo_preco(message: Message, state: FSMContext):
     from datetime import date
     prog_id = db.criar_prognostico(
         data_jogo=date.today().isoformat(),
-        liga=dados.get("liga", ""), equipa_casa="", equipa_fora="", mercado="",
+        liga=dados.get("liga", ""), equipa_casa="", equipa_fora="",
+        mercado=dados.get("mercado", ""),
         odd_betano=dados["odd_betano"],
         conteudo_completo=dados["conteudo_completo"],
         data_hora_jogo=dados.get("data_hora_jogo", ""),
@@ -164,7 +180,8 @@ async def novo_preco(message: Message, state: FSMContext):
     texto_grupo = (
         f"🔒 <b>Prognóstico</b>\n"
         f"🏆 {dados.get('liga', '')}\n"
-        f"🕒 {dados.get('data_hora_jogo', '')}\n"
+        f"📅 {dados.get('data_hora_jogo', '')}\n"
+        f"🎯 Mercado: {dados.get('mercado', '')}\n"
         f"📊 Odd (Betano): <b>{dados['odd_betano']}</b>\n\n"
         f"{linha_stats}"
         f"Desbloqueia por {preco:.2f}€ 👇"
