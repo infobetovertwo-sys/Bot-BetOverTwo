@@ -39,15 +39,16 @@ def get_or_create_utilizador(telegram_id: int, username: str, nome: str) -> int:
 
 
 def criar_prognostico(data_jogo, liga, equipa_casa, equipa_fora, mercado,
-                       odd_betano, conteudo_completo, preco_desbloqueio=2.00):
+                       odd_betano, conteudo_completo, tipo_conteudo="texto",
+                       preco_desbloqueio=2.00):
     with get_conn() as conn:
         cur = conn.execute(
             """INSERT INTO prognosticos
                (data_jogo, liga, equipa_casa, equipa_fora, mercado, odd_betano,
-                conteudo_completo, preco_desbloqueio)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                tipo_conteudo, conteudo_completo, preco_desbloqueio)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (data_jogo, liga, equipa_casa, equipa_fora, mercado, odd_betano,
-             conteudo_completo, preco_desbloqueio),
+             tipo_conteudo, conteudo_completo, preco_desbloqueio),
         )
         return cur.lastrowid
 

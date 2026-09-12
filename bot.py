@@ -114,12 +114,24 @@ async def novo_odd(message: Message, state: FSMContext):
         return
     await state.update_data(odd_betano=odd)
     await state.set_state(NovoPrognostico.conteudo)
-    await message.answer("Conteúdo completo a enviar após pagamento (texto livre):")
+    await message.answer(
+        "Conteúdo a enviar após pagamento — podes mandar um <b>texto</b> "
+        "ou uma <b>foto/imagem</b> (ex: o teu design com a análise):",
+        parse_mode="HTML",
+    )
+
+
+@dp.message(NovoPrognostico.conteudo, F.photo)
+async def novo_conteudo_foto(message: Message, state: FSMContext):
+    file_id = message.photo[-1].file_id  # maior resolução disponível
+    await state.update_data(conteudo_completo=file_id, tipo_conteudo="foto")
+    await state.set_state(NovoPrognostico.preco)
+    await message.answer("Imagem recebida ✅\nPreço de desbloqueio em € (Enter para usar 2.00):")
 
 
 @dp.message(NovoPrognostico.conteudo)
-async def novo_conteudo(message: Message, state: FSMContext):
-    await state.update_data(conteudo_completo=message.text)
+async def novo_conteudo_texto(message: Message, state: FSMContext):
+    await state.update_data(conteudo_completo=message.text, tipo_conteudo="texto")
     await state.set_state(NovoPrognostico.preco)
     await message.answer("Preço de desbloqueio em € (Enter para usar 2.00):")
 
@@ -147,6 +159,7 @@ async def novo_preco(message: Message, state: FSMContext):
         mercado=dados["mercado"],
         odd_betano=dados["odd_betano"],
         conteudo_completo=dados["conteudo_completo"],
+        tipo_conteudo=dados.get("tipo_conteudo", "texto"),
         preco_desbloqueio=preco,
     )
 
@@ -173,6 +186,16 @@ async def novo_preco(message: Message, state: FSMContext):
     await message.answer(f"✅ Prognóstico #{prog_id} publicado no grupo.")
 
 
+# ---------- Função auxiliar: envia o conteúdo, seja texto ou foto ----------
+
+async def enviar_conteudo(chat_id: int, prog, prefixo: str = ""):
+    if prog["tipo_conteudo"] == "foto":
+        await bot.send_photo(chat_id, prog["conteudo_completo"], caption=prefixo or None)
+    else:
+        texto = f"{prefixo}\n\n{prog['conteudo_completo']}" if prefixo else prog["conteudo_completo"]
+        await bot.send_message(chat_id, texto)
+
+
 # ---------- Botão de desbloqueio ----------
 
 @dp.callback_query(F.data.startswith("desbloquear:"))
@@ -195,7 +218,7 @@ async def callback_desbloquear(callback: CallbackQuery):
             (utilizador_id, prognostico_id),
         ).fetchone()
     if ja_pago:
-        await bot.send_message(callback.from_user.id, prog["conteudo_completo"])
+        await enviar_conteudo(callback.from_user.id, prog)
         await callback.answer("Já tinhas desbloqueado — reenviado em privado.")
         return
 
@@ -271,10 +294,7 @@ async def callback_confirmar(callback: CallbackQuery):
             (desbloqueio["utilizador_id"],),
         ).fetchone()
 
-    await bot.send_message(
-        utilizador["telegram_id"],
-        f"✅ Pagamento confirmado!\n\n{prog['conteudo_completo']}",
-    )
+    await enviar_conteudo(utilizador["telegram_id"], prog, prefixo="✅ Pagamento confirmado!")
     await callback.message.edit_text(callback.message.text + "\n\n✅ CONFIRMADO")
     await callback.answer("Confirmado! Conteúdo enviado ao utilizador.")
 
