@@ -41,6 +41,26 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
 
+# ---------- Comando /start (confirmação de que o bot está ativo) ----------
+
+@dp.message(Command("start"))
+async def cmd_start(message: Message):
+    if message.from_user.id == ADMIN_ID:
+        await message.answer(
+            "✅ Bot ativo!\n\n"
+            "Comandos disponíveis:\n"
+            "/novo — publicar um prognóstico novo\n"
+            "/stats — ver taxa de acerto e ROI\n"
+            "/resultado <id> green|red|anulado — marcar resultado"
+        )
+    else:
+        await message.answer(
+            "👋 Bem-vindo! Os prognósticos são publicados no canal. "
+            "Quando quiseres desbloquear um, clica no botão da mensagem — "
+            "vou enviar-te aqui as instruções de pagamento."
+        )
+
+
 # ---------- Criação de prognóstico (fluxo de admin) ----------
 
 class NovoPrognostico(StatesGroup):
