@@ -4,6 +4,11 @@ from contextlib import contextmanager
 
 DATABASE_PATH = os.getenv("DATABASE_PATH", "./prognosticos.db")
 
+# Garante que a pasta onde a base de dados vai ficar existe (ex: /app/data)
+_pasta = os.path.dirname(DATABASE_PATH)
+if _pasta:
+    os.makedirs(_pasta, exist_ok=True)
+
 
 def init_db():
     """Cria as tabelas se ainda não existirem."""
