@@ -41,6 +41,42 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
 
+# ---------- Mensagem fixada no canal com estatísticas sempre atualizadas ----------
+
+async def atualizar_mensagem_fixada():
+    stats = db.get_estatisticas()
+    if not stats["total_prognosticos"] or not (stats["total_greens"] or stats["total_reds"]):
+        return  # ainda sem histórico, não há o que mostrar
+
+    tipo_seq, contagem_seq = db.get_sequencia_atual()
+    emoji_seq = "✅" if tipo_seq == "green" else "❌"
+    linha_sequencia = f"🔥 Sequência atual: {contagem_seq} {emoji_seq}\n" if contagem_seq > 0 else ""
+
+    data_inicio = db.get_data_inicio_historico()
+    linha_data = f"📅 Desde: {data_inicio}\n" if data_inicio else ""
+
+    texto = (
+        f"📊 <b>Estatísticas do canal</b>\n\n"
+        f"✅ Taxa de acerto: <b>{stats['taxa_acerto_pct']}%</b> "
+        f"({stats['total_greens']}✅-{stats['total_reds']}❌)\n"
+        f"📈 ROI: <b>{stats['roi_pct']}%</b>\n"
+        f"{linha_sequencia}"
+        f"{linha_data}"
+    )
+
+    message_id = db.get_config("stats_message_id")
+    if message_id:
+        try:
+            await bot.edit_message_text(chat_id=GRUPO_ID, message_id=int(message_id), text=texto, parse_mode="HTML")
+            return
+        except Exception:
+            pass  # mensagem pode ter sido apagada — cria uma nova abaixo
+
+    sent = await bot.send_message(GRUPO_ID, texto, parse_mode="HTML")
+    await bot.pin_chat_message(GRUPO_ID, sent.message_id, disable_notification=True)
+    db.set_config("stats_message_id", str(sent.message_id))
+
+
 # ---------- Comando /start (confirmação de que o bot está ativo) ----------
 
 @dp.message(Command("start"))
@@ -376,6 +412,7 @@ async def cmd_resultado(message: Message):
         await message.answer("Resultado inválido.")
         return
     db.marcar_resultado(int(prog_id), resultado)
+    await atualizar_mensagem_fixada()
     await message.answer(f"Prognóstico #{prog_id} marcado como {resultado}.")
 
 

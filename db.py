@@ -119,6 +119,50 @@ def get_estatisticas():
         return dict(conn.execute("SELECT * FROM vw_estatisticas").fetchone())
 
 
+def get_config(chave: str):
+    with get_conn() as conn:
+        row = conn.execute("SELECT valor FROM configuracoes WHERE chave = ?", (chave,)).fetchone()
+        return row["valor"] if row else None
+
+
+def set_config(chave: str, valor: str):
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO configuracoes (chave, valor) VALUES (?, ?) "
+            "ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor",
+            (chave, valor),
+        )
+
+
+def get_sequencia_atual():
+    """Devolve (tipo, contagem) da sequência atual: tipo é 'green' ou 'red'."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT resultado FROM prognosticos
+               WHERE resultado IN ('green', 'red')
+               ORDER BY id DESC"""
+        ).fetchall()
+    if not rows:
+        return None, 0
+    tipo = rows[0]["resultado"]
+    contagem = 0
+    for r in rows:
+        if r["resultado"] == tipo:
+            contagem += 1
+        else:
+            break
+    return tipo, contagem
+
+
+def get_data_inicio_historico():
+    with get_conn() as conn:
+        row = conn.execute(
+            """SELECT MIN(data_jogo) AS inicio FROM prognosticos
+               WHERE resultado IN ('green', 'red')"""
+        ).fetchone()
+    return row["inicio"] if row else None
+
+
 def get_pendentes():
     with get_conn() as conn:
         return conn.execute(

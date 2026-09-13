@@ -41,6 +41,11 @@ CREATE TABLE IF NOT EXISTS desbloqueios (
     UNIQUE(utilizador_id, prognostico_id)  -- não pode desbloquear o mesmo prognóstico 2x
 );
 
+CREATE TABLE IF NOT EXISTS configuracoes (
+    chave TEXT PRIMARY KEY,
+    valor TEXT
+);
+
 -- Índices úteis
 CREATE INDEX IF NOT EXISTS idx_desbloqueios_estado ON desbloqueios(estado);
 CREATE INDEX IF NOT EXISTS idx_prognosticos_resultado ON prognosticos(resultado);
