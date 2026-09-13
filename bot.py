@@ -446,10 +446,15 @@ async def cmd_apagar(message: Message):
     if len(partes) != 2:
         await message.answer("Uso: /apagar <id>")
         return
-    prog_id = partes[1]
-    db.apagar_prognostico(int(prog_id))
+    prog_id = partes[1].lstrip("#")
+    try:
+        prog_id_int = int(prog_id)
+    except ValueError:
+        await message.answer("Id inválido — escreve só o número, ex: /apagar 1")
+        return
+    db.apagar_prognostico(prog_id_int)
     await message.answer(
-        f"🗑️ Prognóstico #{prog_id} apagado. "
+        f"🗑️ Prognóstico #{prog_id_int} apagado. "
         f"(A mensagem já publicada no canal, se houver, tens de apagar manualmente lá.)"
     )
 
@@ -463,12 +468,18 @@ async def cmd_resultado(message: Message):
         await message.answer("Uso: /resultado <id> green|red|anulado")
         return
     _, prog_id, resultado = partes
+    prog_id = prog_id.lstrip("#")
     if resultado not in ("green", "red", "anulado"):
-        await message.answer("Resultado inválido.")
+        await message.answer("Resultado inválido. Usa: green, red ou anulado.")
         return
-    db.marcar_resultado(int(prog_id), resultado)
+    try:
+        prog_id_int = int(prog_id)
+    except ValueError:
+        await message.answer("Id inválido — escreve só o número, ex: /resultado 1 green")
+        return
+    db.marcar_resultado(prog_id_int, resultado)
     await atualizar_mensagem_fixada()
-    await message.answer(f"Prognóstico #{prog_id} marcado como {resultado}.")
+    await message.answer(f"Prognóstico #{prog_id_int} marcado como {resultado}.")
 
 
 async def main():
