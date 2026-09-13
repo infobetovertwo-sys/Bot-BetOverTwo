@@ -42,12 +42,14 @@ dp = Dispatcher(storage=MemoryStorage())
 
 
 TEXTO_REGRAS = (
+    "🏆 <b>Bem-vindo ao BetOverTwo!</b>\n"
+    "✨ O canal de confiança para os melhores prognósticos e odds do mercado\n\n"
     "📋 <b>Como funciona</b>\n\n"
-    "⚽ Prognósticos de jogos de futebol de todas as ligas do mundo\n"
-    "🔥 Jogos com muitos golos — odds a partir de 1.75\n"
-    "🎯 Mercados: <b>Ambas Marcam + 2.5 Golos</b> ou <b>Ambas Marcam + 3.5 Golos</b>\n"
-    "💰 Cada prognóstico custa <b>2€</b>\n"
-    "🕐 Publicados com <b>24h de antecedência</b> em relação ao jogo\n"
+    "⚽ Prognósticos de jogos de futebol de todas as ligas do mundo\n\n"
+    "🔥 Jogos com muitos golos — odds a partir de 1.75\n\n"
+    "🎯 Mercados: <b>Ambas Marcam + 2.5 Golos</b> ou <b>Ambas Marcam + 3.5 Golos</b>\n\n"
+    "💰 Cada prognóstico custa <b>2€</b>\n\n"
+    "🕐 Publicados com <b>24h de antecedência</b> em relação ao jogo\n\n"
     "🔒 O prognóstico só é enviado em <b>mensagem privada</b>, e só depois "
     "do pagamento confirmado"
 )
@@ -149,7 +151,7 @@ async def cmd_start(message: Message):
         )
     else:
         await message.answer(
-            f"👋 Bem-vindo ao BetOverTwo!\n\n{TEXTO_REGRAS}\n\n"
+            f"{TEXTO_REGRAS}\n\n"
             "Os prognósticos são publicados no canal, bloqueados. "
             "Quando quiseres desbloquear um, clica no botão da mensagem — "
             "envio-te aqui as instruções de pagamento.",
