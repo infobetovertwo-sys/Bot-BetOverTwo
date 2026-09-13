@@ -1,5 +1,5 @@
 # Bot de Prognósticos — Desbloqueio via MB Way (confirmação manual)
-
+ 
 Bot de Telegram que publica prognósticos "bloqueados" num canal (mostrando
 só a odd da Betano) e permite a cada utilizador desbloquear individualmente
 pagando 2€ via MB Way. O pagamento é confirmado manualmente por ti (um
