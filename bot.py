@@ -83,8 +83,19 @@ async def cmd_fixar_regras(message: Message):
 
 async def atualizar_mensagem_fixada():
     stats = db.get_estatisticas()
-    if not stats["total_prognosticos"] or not (stats["total_greens"] or stats["total_reds"]):
-        return  # ainda sem histórico, não há o que mostrar
+    tem_dados = stats["total_prognosticos"] and (stats["total_greens"] or stats["total_reds"])
+    message_id = db.get_config("stats_message_id")
+
+    if not tem_dados:
+        if not message_id:
+            return  # nunca houve mensagem, e continua sem dados — nada a fazer
+        # já existiu mensagem antes, mas os resultados foram todos apagados
+        texto = "📊 <b>Estatísticas do canal</b>\n\nAinda sem histórico de resultados."
+        try:
+            await bot.edit_message_text(chat_id=GRUPO_ID, message_id=int(message_id), text=texto, parse_mode="HTML")
+        except Exception:
+            pass
+        return
 
     tipo_seq, contagem_seq = db.get_sequencia_atual()
     emoji_seq = "✅" if tipo_seq == "green" else "❌"
@@ -102,7 +113,6 @@ async def atualizar_mensagem_fixada():
         f"{linha_data}"
     )
 
-    message_id = db.get_config("stats_message_id")
     if message_id:
         try:
             await bot.edit_message_text(chat_id=GRUPO_ID, message_id=int(message_id), text=texto, parse_mode="HTML")
@@ -453,6 +463,7 @@ async def cmd_apagar(message: Message):
         await message.answer("Id inválido — escreve só o número, ex: /apagar 1")
         return
     db.apagar_prognostico(prog_id_int)
+    await atualizar_mensagem_fixada()
     await message.answer(
         f"🗑️ Prognóstico #{prog_id_int} apagado. "
         f"(A mensagem já publicada no canal, se houver, tens de apagar manualmente lá.)"
