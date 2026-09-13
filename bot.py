@@ -41,6 +41,44 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
 
+TEXTO_REGRAS = (
+    "📋 <b>Como funciona</b>\n\n"
+    "• Prognósticos de jogos de futebol de todas as ligas do mundo\n"
+    "• Jogos com muitos golos — odds a partir de 1.75\n"
+    "• Mercados: <b>Ambas Marcam + 2.5 Golos</b> ou <b>Ambas Marcam + 3.5 Golos</b>\n"
+    "• Cada prognóstico custa <b>2€</b>\n"
+    "• Publicados com <b>24h de antecedência</b> em relação ao jogo\n"
+    "• O prognóstico só é enviado em <b>mensagem privada</b>, e só depois "
+    "do pagamento confirmado"
+)
+
+
+@dp.message(Command("fixarregras"))
+async def cmd_fixar_regras(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    message_id = db.get_config("regras_message_id")
+    if message_id:
+        try:
+            await bot.edit_message_text(chat_id=GRUPO_ID, message_id=int(message_id), text=TEXTO_REGRAS, parse_mode="HTML")
+            await message.answer("✅ Mensagem de regras atualizada.")
+            return
+        except Exception:
+            pass  # mensagem pode ter sido apagada — cria uma nova abaixo
+
+    sent = await bot.send_message(GRUPO_ID, TEXTO_REGRAS, parse_mode="HTML")
+    db.set_config("regras_message_id", str(sent.message_id))
+    try:
+        await bot.pin_chat_message(GRUPO_ID, sent.message_id, disable_notification=True)
+        await message.answer("✅ Regras publicadas e fixadas no canal.")
+    except Exception:
+        await message.answer(
+            "✅ Regras publicadas, mas não consegui fixar — confirma a permissão "
+            "'Edit Messages of Others' do bot como admin do canal."
+        )
+
+
 # ---------- Mensagem fixada no canal com estatísticas sempre atualizadas ----------
 
 async def atualizar_mensagem_fixada():
@@ -95,19 +133,12 @@ async def cmd_start(message: Message):
             "/novo — publicar um prognóstico novo\n"
             "/pendentes — ver prognósticos ainda sem resultado marcado\n"
             "/stats — ver taxa de acerto e ROI\n"
-            "/resultado <id> green|red|anulado — marcar resultado"
+            "/resultado <id> green|red|anulado — marcar resultado\n"
+            "/fixarregras — publicar/atualizar as regras fixadas no canal"
         )
     else:
         await message.answer(
-            "👋 Bem-vindo ao BetOverTwo!\n\n"
-            "📋 <b>Como funciona:</b>\n"
-            "• Prognósticos de jogos de futebol de todas as ligas do mundo\n"
-            "• Jogos com muitos golos — odds a partir de 1.75\n"
-            "• Mercados: <b>Ambas Marcam + 2.5 Golos</b> ou <b>Ambas Marcam + 3.5 Golos</b>\n"
-            "• Cada prognóstico custa <b>2€</b>\n"
-            "• Publicados com <b>24h de antecedência</b> em relação ao jogo\n"
-            "• O prognóstico só é enviado em <b>mensagem privada</b>, e só depois "
-            "do pagamento confirmado\n\n"
+            f"👋 Bem-vindo ao BetOverTwo!\n\n{TEXTO_REGRAS}\n\n"
             "Os prognósticos são publicados no canal, bloqueados. "
             "Quando quiseres desbloquear um, clica no botão da mensagem — "
             "envio-te aqui as instruções de pagamento.",
