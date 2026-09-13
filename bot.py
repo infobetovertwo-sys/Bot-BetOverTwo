@@ -73,8 +73,15 @@ async def atualizar_mensagem_fixada():
             pass  # mensagem pode ter sido apagada — cria uma nova abaixo
 
     sent = await bot.send_message(GRUPO_ID, texto, parse_mode="HTML")
-    await bot.pin_chat_message(GRUPO_ID, sent.message_id, disable_notification=True)
     db.set_config("stats_message_id", str(sent.message_id))
+    try:
+        await bot.pin_chat_message(GRUPO_ID, sent.message_id, disable_notification=True)
+    except Exception:
+        await bot.send_message(
+            ADMIN_ID,
+            "⚠️ Não consegui fixar a mensagem de estatísticas no canal — "
+            "confirma que o bot tem a permissão 'Fixar Mensagens' como administrador do canal.",
+        )
 
 
 # ---------- Comando /start (confirmação de que o bot está ativo) ----------
