@@ -239,8 +239,9 @@ async def callback_desbloquear(callback: CallbackQuery):
         await callback.answer("Já tinhas desbloqueado — reenviado em privado.")
         return
 
-    # Referência curta e única para identificares o pagamento na Revolut
-    referencia = f"PG{prognostico_id}U{callback.from_user.id % 10000}"
+    # Referência curta, aleatória (não revela quantos prognósticos já existem)
+    import secrets
+    referencia = f"REF{secrets.token_hex(3).upper()}"
 
     try:
         desbloqueio_id = db.criar_desbloqueio(
@@ -254,12 +255,12 @@ async def callback_desbloquear(callback: CallbackQuery):
     try:
         await bot.send_message(
             callback.from_user.id,
-            f"Para desbloquear o prognóstico #{prognostico_id}, envia "
+            f"Para desbloquear este prognóstico, envia "
             f"<b>{prog['preco_desbloqueio']:.2f}€</b> via MB Way para:\n\n"
             f"📱 <b>{MBWAY_NUMERO}</b>\n\n"
             f"Na descrição/nota do MB Way, coloca esta referência:\n"
             f"<code>{referencia}</code>\n\n"
-            f"Assim que eu confirmar o pagamento, recebes a análise completa aqui automaticamente. "
+            f"Assim que eu confirmar o pagamento, recebes o prognóstico aqui automaticamente. "
             f"Isto costuma demorar só alguns minutos.",
             parse_mode="HTML",
         )
