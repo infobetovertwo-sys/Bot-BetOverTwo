@@ -134,6 +134,7 @@ async def cmd_start(message: Message):
             "/pendentes — ver prognósticos ainda sem resultado marcado\n"
             "/stats — ver taxa de acerto e ROI\n"
             "/resultado <id> green|red|anulado — marcar resultado\n"
+            "/apagar <id> — apagar um prognóstico (ex: de teste)\n"
             "/fixarregras — publicar/atualizar as regras fixadas no canal"
         )
     else:
@@ -435,6 +436,22 @@ async def cmd_pendentes(message: Message):
         )
     linhas.append("\nUsa: /resultado <id> green|red|anulado")
     await message.answer("\n".join(linhas), parse_mode="HTML")
+
+
+@dp.message(Command("apagar"))
+async def cmd_apagar(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    partes = message.text.split()
+    if len(partes) != 2:
+        await message.answer("Uso: /apagar <id>")
+        return
+    prog_id = partes[1]
+    db.apagar_prognostico(int(prog_id))
+    await message.answer(
+        f"🗑️ Prognóstico #{prog_id} apagado. "
+        f"(A mensagem já publicada no canal, se houver, tens de apagar manualmente lá.)"
+    )
 
 
 @dp.message(Command("resultado"))

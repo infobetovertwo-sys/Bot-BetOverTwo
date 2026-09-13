@@ -175,3 +175,9 @@ def get_pendentes():
                FROM prognosticos WHERE resultado = 'pendente'
                ORDER BY id DESC"""
         ).fetchall()
+
+
+def apagar_prognostico(prognostico_id: int):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM desbloqueios WHERE prognostico_id = ?", (prognostico_id,))
+        conn.execute("DELETE FROM prognosticos WHERE id = ?", (prognostico_id,))
