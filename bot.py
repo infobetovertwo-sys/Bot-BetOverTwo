@@ -56,6 +56,14 @@ TEXTO_REGRAS = (
 )
 
 
+@dp.message(Command("atualizarstats"))
+async def cmd_atualizar_stats(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    await atualizar_mensagem_fixada()
+    await message.answer("✅ Mensagem de estatísticas atualizada.")
+
+
 @dp.message(Command("fixarregras"))
 async def cmd_fixar_regras(message: Message):
     if message.from_user.id != ADMIN_ID:
@@ -151,6 +159,7 @@ async def cmd_start(message: Message):
             "/stats — ver taxa de acerto e ROI\n"
             "/resultado <id> green|red|anulado — marcar resultado\n"
             "/apagar <id> — apagar um prognóstico (ex: de teste)\n"
+            "/atualizarstats — forçar atualização da mensagem fixada de estatísticas\n"
             "/fixarregras — publicar/atualizar as regras fixadas no canal"
         )
     else:
