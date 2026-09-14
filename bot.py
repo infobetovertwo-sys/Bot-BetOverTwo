@@ -51,7 +51,8 @@ TEXTO_REGRAS = (
     "💰 Cada prognóstico custa <b>2€</b>\n\n"
     "🕐 Publicados com <b>24h de antecedência</b> em relação ao jogo\n\n"
     "🔒 O prognóstico só é enviado em <b>mensagem privada</b>, e só depois "
-    "do pagamento confirmado"
+    "do pagamento confirmado\n\n"
+    "🔞 +18 | Joga com responsabilidade"
 )
 
 
@@ -472,13 +473,10 @@ async def cmd_apagar(message: Message):
     )
 
 
-@dp.message(Command("resultado"))
-async def cmd_resultado(message: Message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    partes = message.text.split()
+async def processar_resultado(message: Message, texto_comando: str, foto_file_id: str = None):
+    partes = texto_comando.split()
     if len(partes) != 3:
-        await message.answer("Uso: /resultado <id> green|red|anulado")
+        await message.answer("Uso: /resultado <id> green|red|anulado (podes anexar um print como foto)")
         return
     _, prog_id, resultado = partes
     prog_id = prog_id.lstrip("#")
@@ -490,9 +488,62 @@ async def cmd_resultado(message: Message):
     except ValueError:
         await message.answer("Id inválido — escreve só o número, ex: /resultado 1 green")
         return
+
     db.marcar_resultado(prog_id_int, resultado)
     await atualizar_mensagem_fixada()
+
+    # Edita a mensagem original do prognóstico no canal, acrescentando o resultado
+    prog = db.get_prognostico(prog_id_int)
+    mensagem_id = db.get_mensagem_id_grupo(prog_id_int)
+    emoji_resultado = {"green": "✅ GREEN", "red": "❌ RED", "anulado": "🚫 ANULADO"}[resultado]
+
+    if mensagem_id and prog:
+        stats = db.get_estatisticas()
+        linha_stats = ""
+        if stats["total_prognosticos"] and (stats["total_greens"] or stats["total_reds"]):
+            linha_stats = f"📈 Taxa de acerto: {stats['taxa_acerto_pct']}% | ROI: {stats['roi_pct']}%\n\n"
+
+        texto_atualizado = (
+            f"🔒 <b>Prognóstico</b>\n"
+            f"🏆 {prog['liga'] or ''}\n"
+            f"📅 {prog['data_hora_jogo'] or ''}\n"
+            f"🎯 Mercado: {prog['mercado'] or ''}\n"
+            f"📊 Odd (Betano): <b>{prog['odd_betano']}</b>\n\n"
+            f"{linha_stats}"
+            f"Desbloqueia por {prog['preco_desbloqueio']:.2f}€ 👇\n\n"
+            f"{emoji_resultado}"
+        )
+        try:
+            await bot.edit_message_text(chat_id=GRUPO_ID, message_id=int(mensagem_id), text=texto_atualizado, parse_mode="HTML")
+        except Exception:
+            pass  # mensagem pode ter sido apagada manualmente — não é crítico
+
+    # Se veio um print anexado, publica-o no canal como prova do resultado
+    if foto_file_id:
+        try:
+            await bot.send_photo(
+                GRUPO_ID, foto_file_id,
+                caption=f"{emoji_resultado} — Prognóstico #{prog_id_int}",
+            )
+        except Exception:
+            await message.answer("⚠️ Não consegui publicar o print no canal.")
+
     await message.answer(f"Prognóstico #{prog_id_int} marcado como {resultado}.")
+
+
+@dp.message(Command("resultado"))
+async def cmd_resultado(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    await processar_resultado(message, message.text)
+
+
+@dp.message(F.photo, F.caption.startswith("/resultado"))
+async def cmd_resultado_com_foto(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    foto_file_id = message.photo[-1].file_id
+    await processar_resultado(message, message.caption, foto_file_id=foto_file_id)
 
 
 async def main():

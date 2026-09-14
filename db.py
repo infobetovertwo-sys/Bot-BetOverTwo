@@ -45,15 +45,15 @@ def get_or_create_utilizador(telegram_id: int, username: str, nome: str) -> int:
 
 def criar_prognostico(data_jogo, liga, equipa_casa, equipa_fora, mercado,
                        odd_betano, conteudo_completo, data_hora_jogo="",
-                       tipo_conteudo="texto", preco_desbloqueio=2.00):
+                       hora_corte=None, tipo_conteudo="texto", preco_desbloqueio=2.00):
     with get_conn() as conn:
         cur = conn.execute(
             """INSERT INTO prognosticos
                (data_jogo, liga, equipa_casa, equipa_fora, mercado, odd_betano,
-                data_hora_jogo, tipo_conteudo, conteudo_completo, preco_desbloqueio)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                data_hora_jogo, hora_corte, tipo_conteudo, conteudo_completo, preco_desbloqueio)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (data_jogo, liga, equipa_casa, equipa_fora, mercado, odd_betano,
-             data_hora_jogo, tipo_conteudo, conteudo_completo, preco_desbloqueio),
+             data_hora_jogo, hora_corte, tipo_conteudo, conteudo_completo, preco_desbloqueio),
         )
         return cur.lastrowid
 
@@ -181,3 +181,11 @@ def apagar_prognostico(prognostico_id: int):
     with get_conn() as conn:
         conn.execute("DELETE FROM desbloqueios WHERE prognostico_id = ?", (prognostico_id,))
         conn.execute("DELETE FROM prognosticos WHERE id = ?", (prognostico_id,))
+
+
+def get_mensagem_id_grupo(prognostico_id: int):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT mensagem_id_grupo FROM prognosticos WHERE id = ?", (prognostico_id,)
+        ).fetchone()
+        return row["mensagem_id_grupo"] if row else None

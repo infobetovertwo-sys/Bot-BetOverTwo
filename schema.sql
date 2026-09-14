@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS prognosticos (
     equipa_fora TEXT,
     mercado TEXT,              -- ex: "Over 2.5", "Vitória Casa", "Ambas Marcam"
     odd_betano REAL NOT NULL,  -- odd visível publicamente (antes de desbloquear)
-    data_hora_jogo TEXT,       -- ex: "13/09 20:00" — visível publicamente
+    data_hora_jogo TEXT,       -- ex: "13/09" — visível publicamente (só data)
+    hora_corte TEXT,           -- ISO datetime exato do início do jogo — uso interno, nunca mostrado publicamente
     tipo_conteudo TEXT DEFAULT 'texto',  -- 'texto' ou 'foto'
     conteudo_completo TEXT,    -- texto livre, OU file_id da foto (se tipo_conteudo='foto')
     preco_desbloqueio REAL DEFAULT 2.00,
