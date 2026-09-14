@@ -124,6 +124,12 @@ def get_estatisticas():
         return dict(conn.execute("SELECT * FROM vw_estatisticas").fetchone())
 
 
+def get_total_publicados():
+    with get_conn() as conn:
+        row = conn.execute("SELECT COUNT(*) AS total FROM prognosticos").fetchone()
+        return row["total"] if row else 0
+
+
 def get_config(chave: str):
     with get_conn() as conn:
         row = conn.execute("SELECT valor FROM configuracoes WHERE chave = ?", (chave,)).fetchone()

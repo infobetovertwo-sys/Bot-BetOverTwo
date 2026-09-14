@@ -107,8 +107,11 @@ async def atualizar_mensagem_fixada():
     data_inicio = db.get_data_inicio_historico()
     linha_data = f"📅 Desde: {data_inicio}\n" if data_inicio else ""
 
+    total_publicados = db.get_total_publicados()
+
     texto = (
         f"📊 <b>Estatísticas do canal</b>\n\n"
+        f"🗂️ Total de prognósticos publicados: <b>{total_publicados}</b>\n"
         f"✅ Taxa de acerto: <b>{stats['taxa_acerto_pct']}%</b> "
         f"({stats['total_greens']}✅-{stats['total_reds']}❌)\n"
         f"📈 ROI: <b>{stats['roi_pct']}%</b>\n"
@@ -166,6 +169,7 @@ class NovoPrognostico(StatesGroup):
     liga = State()
     odd = State()
     data = State()
+    hora_corte = State()
     mercado = State()
     foto = State()
     preco = State()
@@ -201,6 +205,29 @@ async def novo_odd(message: Message, state: FSMContext):
 @dp.message(NovoPrognostico.data)
 async def novo_data(message: Message, state: FSMContext):
     await state.update_data(data_hora_jogo=message.text.strip())
+    await state.set_state(NovoPrognostico.hora_corte)
+    await message.answer(
+        "Hora exata de início do jogo? (formato DD/MM HH:MM, ex: 13/09 20:00)\n"
+        "⚠️ Isto é só para o bot bloquear pagamentos automaticamente quando o jogo começar — "
+        "nunca aparece nas mensagens públicas."
+    )
+
+
+@dp.message(NovoPrognostico.hora_corte)
+async def novo_hora_corte(message: Message, state: FSMContext):
+    texto = message.text.strip()
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        dia_mes, hora_min = texto.split()
+        dia, mes = [int(x) for x in dia_mes.split("/")]
+        hora, minuto = [int(x) for x in hora_min.split(":")]
+        agora = datetime.now(ZoneInfo("Europe/Lisbon"))
+        dt = datetime(agora.year, mes, dia, hora, minuto, tzinfo=ZoneInfo("Europe/Lisbon"))
+        await state.update_data(hora_corte=dt.isoformat())
+    except Exception:
+        await message.answer("Formato inválido. Usa: DD/MM HH:MM (ex: 13/09 20:00). Tenta outra vez.")
+        return
     await state.set_state(NovoPrognostico.mercado)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Ambas Marcam + 2.5 Golos", callback_data="mercado:AM+2.5")],
@@ -254,6 +281,7 @@ async def novo_preco(message: Message, state: FSMContext):
         odd_betano=dados["odd_betano"],
         conteudo_completo=dados["conteudo_completo"],
         data_hora_jogo=dados.get("data_hora_jogo", ""),
+        hora_corte=dados.get("hora_corte"),
         tipo_conteudo="foto",
         preco_desbloqueio=preco,
     )
@@ -262,7 +290,8 @@ async def novo_preco(message: Message, state: FSMContext):
     linha_stats = ""
     if stats["total_prognosticos"] and stats["total_prognosticos"] > 0 and (stats["total_greens"] or stats["total_reds"]):
         linha_stats = (
-            f"📈 Taxa de acerto: {stats['taxa_acerto_pct']}% | ROI: {stats['roi_pct']}%\n\n"
+            f"📈 Estatísticas gerais do canal — Taxa de acerto: {stats['taxa_acerto_pct']}% "
+            f"| ROI: {stats['roi_pct']}%\n\n"
         )
 
     texto_grupo = (
@@ -310,6 +339,19 @@ async def callback_desbloquear(callback: CallbackQuery):
     if not prog:
         await callback.answer("Prognóstico não encontrado.", show_alert=True)
         return
+
+    # Bloqueia desbloqueio se o jogo já começou
+    if prog["hora_corte"]:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        agora = datetime.now(ZoneInfo("Europe/Lisbon"))
+        hora_corte = datetime.fromisoformat(prog["hora_corte"])
+        if agora >= hora_corte:
+            await callback.answer(
+                "⏱️ Este prognóstico já não pode ser desbloqueado — o jogo já começou.",
+                show_alert=True,
+            )
+            return
 
     utilizador_id = db.get_or_create_utilizador(
         callback.from_user.id, callback.from_user.username, callback.from_user.full_name
@@ -501,7 +543,7 @@ async def processar_resultado(message: Message, texto_comando: str, foto_file_id
         stats = db.get_estatisticas()
         linha_stats = ""
         if stats["total_prognosticos"] and (stats["total_greens"] or stats["total_reds"]):
-            linha_stats = f"📈 Taxa de acerto: {stats['taxa_acerto_pct']}% | ROI: {stats['roi_pct']}%\n\n"
+            linha_stats = f"📈 Estatísticas gerais do canal — Taxa de acerto: {stats['taxa_acerto_pct']}% | ROI: {stats['roi_pct']}%\n\n"
 
         texto_atualizado = (
             f"🔒 <b>Prognóstico</b>\n"
