@@ -156,6 +156,7 @@ async def cmd_start(message: Message):
             "Comandos disponíveis:\n"
             "/novo — publicar um prognóstico novo\n"
             "/pendentes — ver prognósticos ainda sem resultado marcado\n"
+            "/todos — listar os últimos prognósticos (com estado)\n"
             "/stats — ver taxa de acerto e ROI\n"
             "/resultado <id> green|red|anulado — marcar resultado\n"
             "/apagar <id> — apagar um prognóstico (ex: de teste)\n"
@@ -499,6 +500,25 @@ async def cmd_pendentes(message: Message):
             f"#{p['id']} — {p['liga'] or 'sem liga'} | Odd: {p['odd_betano']} | {p['data_hora_jogo'] or 'sem data'}"
         )
     linhas.append("\nUsa: /resultado <id> green|red|anulado")
+    await message.answer("\n".join(linhas), parse_mode="HTML")
+
+
+@dp.message(Command("todos"))
+async def cmd_todos(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    registos = db.get_todos()
+    if not registos:
+        await message.answer("Ainda não há nenhum prognóstico registado.")
+        return
+    emoji_resultado = {"pendente": "⏳", "green": "✅", "red": "❌", "anulado": "🚫"}
+    linhas = ["📋 <b>Últimos prognósticos:</b>\n"]
+    for p in registos:
+        e = emoji_resultado.get(p["resultado"], "❓")
+        linhas.append(
+            f"{e} #{p['id']} — {p['liga'] or 'sem liga'} | Odd: {p['odd_betano']} | {p['data_hora_jogo'] or 'sem data'}"
+        )
+    linhas.append("\nPara corrigir: /resultado <id> green|red|anulado, ou /apagar <id> para remover.")
     await message.answer("\n".join(linhas), parse_mode="HTML")
 
 

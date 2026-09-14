@@ -183,6 +183,16 @@ def get_pendentes():
         ).fetchall()
 
 
+def get_todos(limite: int = 15):
+    with get_conn() as conn:
+        return conn.execute(
+            """SELECT id, liga, odd_betano, data_hora_jogo, resultado
+               FROM prognosticos
+               ORDER BY id DESC LIMIT ?""",
+            (limite,),
+        ).fetchall()
+
+
 def apagar_prognostico(prognostico_id: int):
     with get_conn() as conn:
         conn.execute("DELETE FROM desbloqueios WHERE prognostico_id = ?", (prognostico_id,))
